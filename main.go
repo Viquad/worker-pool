@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -34,17 +35,34 @@ func main() {
 	rand.Seed(time.Now().Unix())
 
 	startTime := time.Now()
+	numUsers := 100
+	numWorkers := 10
+	users := make(chan User)
+	wg := &sync.WaitGroup{}
 
-	users := generateUsers(100)
-
-	for _, user := range users {
-		saveUserInfo(user)
+	for i := 1; i <= numWorkers; i++ {
+		go worker(i, users, wg)
 	}
+
+	wg.Add(numUsers)
+	generateUsers(numUsers, users)
+
+	close(users)
+
+	wg.Wait()
 
 	fmt.Printf("DONE! Time Elapsed: %.2f seconds\n", time.Since(startTime).Seconds())
 }
 
-func saveUserInfo(user User) {
+func worker(id int, users <-chan User, wg *sync.WaitGroup) {
+	for user := range users {
+		fmt.Printf("worker №%d start job\n", id)
+		saveUserInfo(user, wg)
+		fmt.Printf("worker №%d finished job\n", id)
+	}
+}
+
+func saveUserInfo(user User, wg *sync.WaitGroup) {
 	fmt.Printf("WRITING FILE FOR UID %d\n", user.id)
 
 	filename := fmt.Sprintf("users/uid%d.txt", user.id)
@@ -55,13 +73,12 @@ func saveUserInfo(user User) {
 
 	file.WriteString(user.getActivityInfo())
 	time.Sleep(time.Second)
+	wg.Done()
 }
 
-func generateUsers(count int) []User {
-	users := make([]User, count)
-
+func generateUsers(count int, users chan<- User) {
 	for i := 0; i < count; i++ {
-		users[i] = User{
+		users <- User{
 			id:    i + 1,
 			email: fmt.Sprintf("user%d@company.com", i+1),
 			logs:  generateLogs(rand.Intn(1000)),
@@ -69,8 +86,6 @@ func generateUsers(count int) []User {
 		fmt.Printf("generated user %d\n", i+1)
 		time.Sleep(time.Millisecond * 100)
 	}
-
-	return users
 }
 
 func generateLogs(count int) []logItem {
